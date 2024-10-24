@@ -1,39 +1,6 @@
-yfinance
-plotly
-datetime
-python-docx
-ta
-pandas-ta
-statsmodels
-xgboost
-lightgbm
-catboost  
-shap
-scikit-learn 
-openpyxl
-cmdstanpy
-pystan
-numpy<2
-prophet
-pandas
-scipy
-matplotlib
 streamlit
-pipenv
-lock
-arch
-TextBlob
-tensorflow
-pydrive
-google-auth
-google-auth-oauthlib
-google-auth-httplib2
-google-api-python-client
-xlsxwriter
-openbb
-backtrader
-tabulate
-
+pandas
+yfinance==0.2.46
 
 
 
