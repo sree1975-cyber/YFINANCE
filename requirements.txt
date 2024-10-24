@@ -1,6 +1,7 @@
 streamlit
 pandas
 yfinance==0.2.46
+numpy
 
 
 
