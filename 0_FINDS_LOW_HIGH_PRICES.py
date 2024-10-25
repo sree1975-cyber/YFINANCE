@@ -2,58 +2,34 @@ import streamlit as st
 import pandas as pd
 import yfinance as yf
 import numpy as np
-import plotly.graph_objects as go
 
 def get_stock_data(symbol, start_date, end_date):
     data = yf.download(symbol, start=start_date, end=end_date)
     return data.reset_index()
 
-def calculate_technical_indicators(data):
-    data['SMA_20'] = data['Close'].rolling(window=20).mean()
-    data['SMA_50'] = data['Close'].rolling(window=50).mean()
-    data['EMA_20'] = data['Close'].ewm(span=20, adjust=False).mean()
-    data['RSI'] = compute_rsi(data['Close'])
+def calculate_profit_loss(data):
+    required_columns = ['Open', 'Adj Close']
+    if not all(col in data.columns for col in required_columns):
+        raise ValueError(f"Missing required columns: {set(required_columns) - set(data.columns)}")
+    
+    data['Profit-Loss'] = data['Adj Close'] - data['Open']
+    data['Previous Close'] = data['Adj Close'].shift(1).fillna(method='bfill')
+    data['Adj/Open'] = data['Open'] - data['Previous Close'].fillna(0)
+    data['Gain_Loss'] = data['Profit-Loss'] + data['Adj/Open']
+    
+    conditions = [
+        (data['Adj/Open'].isna()),
+        (data['Adj/Open'] > 0),
+        (data['Adj/Open'] < 0)
+    ]
+    choices = [
+        (data['Gain_Loss'] / data['Open'] * 100).fillna(0),
+        (data['Gain_Loss'] / (data['Open'] - data['Adj/Open'])) * 100,
+        (data['Gain_Loss'] / (data['Open'] + data['Adj/Open'])) * 100
+    ]
+    data['%Change'] = np.select(conditions, choices, default=0)
+
     return data
-
-def compute_rsi(series, period=14):
-    delta = series.diff(1)
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
-    rs = gain / loss
-    return 100 - (100 / (1 + rs))
-
-def plot_data(data, symbol):
-    fig = go.Figure()
-
-    # Add candlestick
-    fig.add_trace(go.Candlestick(x=data['Date'],
-                                  open=data['Open'],
-                                  high=data['High'],
-                                  low=data['Low'],
-                                  close=data['Close'],
-                                  name='Candlestick',
-                                  hovertemplate='Open: %{open}<br>Close: %{close}<br>High: %{high}<br>Low: %{low}<br><extra></extra>'))
-
-    # Add moving averages
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['SMA_20'],
-                             mode='lines', name='SMA 20',
-                             hovertemplate='SMA 20: %{y:.2f}<br>Date: %{x}<br><extra></extra>'))
-
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['SMA_50'],
-                             mode='lines', name='SMA 50',
-                             hovertemplate='SMA 50: %{y:.2f}<br>Date: %{x}<br><extra></extra>'))
-
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['EMA_20'],
-                             mode='lines', name='EMA 20',
-                             hovertemplate='EMA 20: %{y:.2f}<br>Date: %{x}<br><extra></extra>'))
-
-    # Configure layout
-    fig.update_layout(title=f'Stock Data for {symbol}',
-                      xaxis_title='Date',
-                      yaxis_title='Price',
-                      xaxis_rangeslider_visible=False)
-
-    return fig
 
 def main():
     st.title('Stock Data Analysis')
@@ -65,9 +41,8 @@ def main():
     if st.button('Fetch Data'):
         for symbol in symbols:
             data = get_stock_data(symbol, start_date, end_date)
-            data = calculate_technical_indicators(data)
-            fig = plot_data(data, symbol)
-            st.plotly_chart(fig)
+            data = calculate_profit_loss(data)
+            st.write(data)
 
 if __name__ == "__main__":
     main()
