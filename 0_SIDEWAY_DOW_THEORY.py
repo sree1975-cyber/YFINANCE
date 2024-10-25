@@ -47,9 +47,9 @@ def magic_findings(prices):
 # Calculate performance analysis for percentage movements
 def performance_analysis(prices):
     changes = prices.pct_change() * 100
-    days_to_gain_5 = (changes[changes >= 5].index[0] - changes.index[0]).days if any(changes >= 5) else None
-    days_to_gain_10 = (changes[changes >= 10].index[0] - changes.index[0]).days if any(changes >= 10) else None
-    return days_to_gain_5, days_to_gain_10
+    days_to_gain_5 = changes[changes >= 5].index[0] - changes.index[0] if any(changes >= 5) else None
+    days_to_gain_10 = changes[changes >= 10].index[0] - changes.index[0] if any(changes >= 10) else None
+    return days_to_gain_5.days if days_to_gain_5 else None, days_to_gain_10.days if days_to_gain_10 else None
 
 # Calculate support and resistance levels
 def support_resistance(prices):
@@ -58,7 +58,7 @@ def support_resistance(prices):
     return support, resistance
 
 # Plotting function with Plotly
-def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance, magic_events):
+def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance):
     fig = go.Figure()
     
     # Price trace
@@ -86,15 +86,28 @@ def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band,
                              line=dict(color='gold', dash='dash')))
     
     # Update layout
-    fig.update_layout(title='Stock Price with Moving Averages, Bollinger Bands, Support, and Resistance',
+    fig.update_layout(title='Stock Price Analysis',
                       xaxis_title='Date',
                       yaxis_title='Price',
                       hovermode='x unified')
     
     st.plotly_chart(fig)
 
+# Generate trading advice
+def generate_advisory(magic_events, days_to_gain_5, days_to_gain_10):
+    advisory = ""
+    if not magic_events["up_10_percent"].empty:
+        advisory += "Consider buying as the stock has shown a significant upward trend.\n"
+    if not magic_events["down_10_percent"].empty:
+        advisory += "Be cautious! The stock has experienced significant downward movements.\n"
+    if days_to_gain_5:
+        advisory += f"It took {days_to_gain_5} days to gain ≥ 5%.\n"
+    if days_to_gain_10:
+        advisory += f"It took {days_to_gain_10} days to gain ≥ 10%.\n"
+    return advisory or "No significant advisory at this time."
+
 # Streamlit UI
-st.title('Advanced Market Analysis with Magic Price Events and Dow Theory')
+st.title('Advanced Market Analysis with Magic Price Events and Advisory')
 
 ticker = st.text_input('Enter stock ticker (e.g., AAPL):', 'AAPL')
 start_date = st.date_input('Start date', pd.to_datetime('2020-01-01'))
@@ -132,14 +145,36 @@ if st.button('Analyze'):
             days_to_gain_5, days_to_gain_10 = performance_analysis(prices)
             support, resistance = support_resistance(prices)
 
-            st.subheader(f'{ticker} Analysis')
-            plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance, magic_events)
-
+            # Display analysis results in a report format
+            st.subheader(f'{ticker} Analysis Report')
             st.write(f'Total Days in Sideways Pattern: {sideways.sum()}')
-            st.write(f'Magic Stock Findings:')
-            st.write(f'Upward Events (≥ 10%): {magic_events["up_10_percent"]}')
-            st.write(f'Downward Events (≤ -10%): {magic_events["down_10_percent"]}')
-            st.write(f'Upward Events (≥ 5%): {magic_events["up_5_percent"]}')
-            st.write(f'Downward Events (≤ -5%): {magic_events["down_5_percent"]}')
-            st.write(f'Days to Gain ≥ 5%: {days_to_gain_5}, Days to Gain ≥ 10%: {days_to_gain_10}')
-            st.write(f'Support Level: {support:.2f}, Resistance Level: {resistance:.2f}')
+
+            st.write("### Magic Stock Findings")
+            advisory = generate_advisory(magic_events, days_to_gain_5, days_to_gain_10)
+            st.markdown(advisory)
+
+            # Presenting significant events in a more readable format
+            st.write("### Significant Price Events")
+            if not magic_events["up_10_percent"].empty:
+                st.table(magic_events["up_10_percent"].reset_index(name='Price'))
+            if not magic_events["down_10_percent"].empty:
+                st.table(magic_events["down_10_percent"].reset_index(name='Price'))
+            if not magic_events["up_5_percent"].empty:
+                st.table(magic_events["up_5_percent"].reset_index(name='Price'))
+            if not magic_events["down_5_percent"].empty:
+                st.table(magic_events["down_5_percent"].reset_index(name='Price'))
+
+            # Performance analysis results
+            st.write("### Performance Analysis")
+            st.write(f"Days to Gain ≥ 5%: {days_to_gain_5}")
+            st.write(f"Days to Gain ≥ 10%: {days_to_gain_10}")
+
+            # Support and resistance levels
+            st.write("### Support and Resistance Levels")
+            st.write(f"Support Level: {support:.2f}")
+            st.write(f"Resistance Level: {resistance:.2f}")
+
+            # Plot the data
+            plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance)
+
+# Note: Make sure to run this code in a suitable Python environment with the required libraries.
