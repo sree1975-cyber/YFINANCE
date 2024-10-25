@@ -3,15 +3,18 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import plotly.graph_objects as go
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 
 # Fetch historical stock data
 def fetch_data(ticker, start, end):
     try:
         data = yf.download(ticker, start=start, end=end)
-        return data['Close']
+        return data
     except Exception as e:
         st.error(f"Error fetching data for {ticker}: {e}")
-        return pd.Series()
+        return pd.DataFrame()
 
 # Detect sideways pattern
 def detect_sideways_pattern(prices, threshold=0.02):
@@ -19,162 +22,91 @@ def detect_sideways_pattern(prices, threshold=0.02):
     sideways = np.abs(pct_change) < threshold
     return sideways
 
-# Calculate moving averages
-def calculate_moving_averages(prices, short_window=20, long_window=50):
-    short_mavg = prices.rolling(window=short_window).mean()
-    long_mavg = prices.rolling(window=long_window).mean()
-    return short_mavg, long_mavg
+# Prepare features for machine learning
+def prepare_features(data):
+    features = pd.DataFrame()
+    features['Close'] = data['Close']
+    features['Pct_Change'] = features['Close'].pct_change()
+    features['MA_10'] = features['Close'].rolling(window=10).mean()
+    features['MA_20'] = features['Close'].rolling(window=20).mean()
+    features['Volatility'] = features['Close'].rolling(window=5).std()
+    features['Sideways'] = detect_sideways_pattern(data['Close'])
+    features.dropna(inplace=True)
+    return features
 
-# Calculate Bollinger Bands
-def calculate_bollinger_bands(prices, window=20, num_std=2):
-    rolling_mean = prices.rolling(window=window).mean()
-    rolling_std = prices.rolling(window=window).std()
-    upper_band = rolling_mean + (rolling_std * num_std)
-    lower_band = rolling_mean - (rolling_std * num_std)
-    return rolling_mean, upper_band, lower_band
+# Train machine learning model
+def train_model(features):
+    X = features[['Pct_Change', 'MA_10', 'MA_20', 'Volatility']]
+    y = features['Sideways']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    
+    model = RandomForestClassifier(n_estimators=100, random_state=42)
+    model.fit(X_train, y_train)
+    
+    # Evaluate the model
+    predictions = model.predict(X_test)
+    report = classification_report(y_test, predictions)
+    
+    return model, report
 
 # Magic stock findings
-def magic_findings(prices):
-    price_changes = prices.pct_change() * 100
+def magic_findings(data):
+    price_changes = data['Close'].pct_change() * 100
     significant_events = {
-        "up_10_percent": prices[(price_changes >= 10)],
-        "down_10_percent": prices[(price_changes <= -10)],
-        "up_5_percent": prices[(price_changes >= 5)],
-        "down_5_percent": prices[(price_changes <= -5)],
+        "up_10_percent": data[price_changes >= 10],
+        "down_10_percent": data[price_changes <= -10],
+        "up_5_percent": data[price_changes >= 5],
+        "down_5_percent": data[price_changes <= -5],
     }
     return significant_events
 
-# Calculate performance analysis for percentage movements
-def performance_analysis(prices):
-    changes = prices.pct_change() * 100
-    days_to_gain_5 = changes[changes >= 5].index[0] - changes.index[0] if any(changes >= 5) else None
-    days_to_gain_10 = changes[changes >= 10].index[0] - changes.index[0] if any(changes >= 10) else None
-    return days_to_gain_5.days if days_to_gain_5 else None, days_to_gain_10.days if days_to_gain_10 else None
-
-# Calculate support and resistance levels
-def support_resistance(prices):
-    support = prices.min()
-    resistance = prices.max()
-    return support, resistance
-
-# Plotting function with Plotly
-def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance):
+# Plotting function
+def plot_data(data, model):
     fig = go.Figure()
     
     # Price trace
-    fig.add_trace(go.Scatter(x=prices.index, y=prices, mode='lines', name='Price', line=dict(color='blue')))
+    fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Price', line=dict(color='blue')))
     
-    # Sideways pattern trace
-    fig.add_trace(go.Scatter(x=prices.index[sideways], y=prices[sideways], mode='markers', 
-                             name='Sideways Pattern', marker=dict(color='orange', size=10)))
-    
-    # Moving Averages
-    fig.add_trace(go.Scatter(x=short_mavg.index, y=short_mavg, mode='lines', name='Short MA', line=dict(color='green')))
-    fig.add_trace(go.Scatter(x=long_mavg.index, y=long_mavg, mode='lines', name='Long MA', line=dict(color='red')))
-    
-    # Bollinger Bands
-    fig.add_trace(go.Scatter(x=rolling_mean.index, y=rolling_mean, mode='lines', name='Rolling Mean', line=dict(color='orange')))
-    fig.add_trace(go.Scatter(x=upper_band.index, y=upper_band, mode='lines', name='Upper Band', fill=None, 
-                             line=dict(color='lightgray', dash='dash'), showlegend=True))
-    fig.add_trace(go.Scatter(x=lower_band.index, y=lower_band, mode='lines', name='Lower Band', fill='tonexty', 
-                             line=dict(color='lightgray', dash='dash'), showlegend=True))
-
-    # Support and Resistance Lines
-    fig.add_trace(go.Scatter(x=prices.index, y=[support]*len(prices), mode='lines', name='Support', 
-                             line=dict(color='purple', dash='dash')))
-    fig.add_trace(go.Scatter(x=prices.index, y=[resistance]*len(prices), mode='lines', name='Resistance', 
-                             line=dict(color='gold', dash='dash')))
+    # Predictions trace
+    data['Prediction'] = model.predict(prepare_features(data[['Close']]))
+    fig.add_trace(go.Scatter(x=data.index, y=data['Prediction'] * 100, mode='lines', name='Predicted Sideways Pattern', line=dict(color='orange', dash='dash')))
     
     # Update layout
-    fig.update_layout(title='Stock Price Analysis',
+    fig.update_layout(title='Stock Price with Machine Learning Predictions',
                       xaxis_title='Date',
                       yaxis_title='Price',
                       hovermode='x unified')
     
     st.plotly_chart(fig)
 
-# Generate trading advice
-def generate_advisory(magic_events, days_to_gain_5, days_to_gain_10):
-    advisory = ""
-    if not magic_events["up_10_percent"].empty:
-        advisory += "Consider buying as the stock has shown a significant upward trend.\n"
-    if not magic_events["down_10_percent"].empty:
-        advisory += "Be cautious! The stock has experienced significant downward movements.\n"
-    if days_to_gain_5:
-        advisory += f"It took {days_to_gain_5} days to gain ≥ 5%.\n"
-    if days_to_gain_10:
-        advisory += f"It took {days_to_gain_10} days to gain ≥ 10%.\n"
-    return advisory or "No significant advisory at this time."
-
 # Streamlit UI
-st.title('Advanced Market Analysis with Magic Price Events and Advisory')
+st.title('Market Analysis with Machine Learning for Sideways Patterns')
 
 ticker = st.text_input('Enter stock ticker (e.g., AAPL):', 'AAPL')
 start_date = st.date_input('Start date', pd.to_datetime('2020-01-01'))
 end_date = st.date_input('End date', pd.to_datetime('today'))
 
-# Time period selection
-time_period = st.selectbox('Select Time Period for Analysis', ['5 Days', '15 Days', '1 Month', '3 Months', '6 Months', 'YTD', '1 Year', '2 Years', '3 Years', '4 Years', '5 Years', 'Max', 'Custom'])
-
-# Custom date selection
-if time_period == 'Custom':
-    custom_start = st.date_input('Custom Start Date', pd.to_datetime('2020-01-01'))
-    custom_end = st.date_input('Custom End Date', pd.to_datetime('today'))
-else:
-    custom_start, custom_end = pd.to_datetime(start_date), pd.to_datetime(end_date)
-
-# Moving average parameters
-short_window = st.slider('Short Moving Average Window', min_value=5, max_value=100, value=20)
-long_window = st.slider('Long Moving Average Window', min_value=5, max_value=100, value=50)
-
-# Bollinger Bands parameters
-bollinger_window = st.slider('Bollinger Bands Window', min_value=5, max_value=100, value=20)
-num_std = st.slider('Bollinger Bands Std Dev', min_value=1, max_value=5, value=2)
-
 if st.button('Analyze'):
     with st.spinner('Fetching data...'):
-        prices = fetch_data(ticker, custom_start, custom_end)
+        data = fetch_data(ticker, start_date, end_date)
         
-        if prices.empty:
+        if data.empty:
             st.error("No data found for this ticker.")
         else:
-            sideways = detect_sideways_pattern(prices)
-            short_mavg, long_mavg = calculate_moving_averages(prices, short_window, long_window)
-            rolling_mean, upper_band, lower_band = calculate_bollinger_bands(prices, bollinger_window, num_std)
-            magic_events = magic_findings(prices)
-            days_to_gain_5, days_to_gain_10 = performance_analysis(prices)
-            support, resistance = support_resistance(prices)
+            features = prepare_features(data)
+            model, report = train_model(features)
+            st.write("### Model Classification Report")
+            st.text(report)
 
-            # Display analysis results in a report format
-            st.subheader(f'{ticker} Analysis Report')
-            st.write(f'Total Days in Sideways Pattern: {sideways.sum()}')
-
+            # Magic findings
+            magic_events = magic_findings(data)
             st.write("### Magic Stock Findings")
-            advisory = generate_advisory(magic_events, days_to_gain_5, days_to_gain_10)
-            st.markdown(advisory)
-
-            # Presenting significant events in a more readable format
-            st.write("### Significant Price Events")
-            if not magic_events["up_10_percent"].empty:
-                st.table(magic_events["up_10_percent"].reset_index(name='Price'))
-            if not magic_events["down_10_percent"].empty:
-                st.table(magic_events["down_10_percent"].reset_index(name='Price'))
-            if not magic_events["up_5_percent"].empty:
-                st.table(magic_events["up_5_percent"].reset_index(name='Price'))
-            if not magic_events["down_5_percent"].empty:
-                st.table(magic_events["down_5_percent"].reset_index(name='Price'))
-
-            # Performance analysis results
-            st.write("### Performance Analysis")
-            st.write(f"Days to Gain ≥ 5%: {days_to_gain_5}")
-            st.write(f"Days to Gain ≥ 10%: {days_to_gain_10}")
-
-            # Support and resistance levels
-            st.write("### Support and Resistance Levels")
-            st.write(f"Support Level: {support:.2f}")
-            st.write(f"Resistance Level: {resistance:.2f}")
+            for event, details in magic_events.items():
+                if not details.empty:
+                    st.write(f"Significant Events - {event.replace('_', ' ').capitalize()}:")
+                    st.table(details[['Open', 'High', 'Low', 'Close', 'Volume']])
 
             # Plot the data
-            plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance)
+            plot_data(data, model)
 
 # Note: Make sure to run this code in a suitable Python environment with the required libraries.
