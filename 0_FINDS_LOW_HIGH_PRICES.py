@@ -11,16 +11,25 @@ def get_stock_data(symbol, start_date, end_date):
     return data
 
 def calculate_profit_loss(data):
+    # Print the shapes and first few rows for debugging
+    print("Data shape:", data.shape)
+    print("Columns:", data.columns.tolist())
+    print(data[['Open', 'Adj Close']].head())  # Check the relevant columns
+
     if 'Open' in data.columns and 'Adj Close' in data.columns:
         data['Profit-Loss'] = data['Adj Close'] - data['Open']
         data['Previous Close'] = data['Adj Close'].shift(1)
-        
-        # Ensure the Previous Close is not NaN before performing the calculation
-        data['Previous Close'] = data['Previous Close'].fillna(method='bfill')  # Backfill NaN
-        
-        # Calculate Adj/Open safely
+
+        # Fill NaN values for 'Previous Close'
+        data['Previous Close'] = data['Previous Close'].fillna(method='bfill')
+
+        # Debugging previous close
+        print("Previous Close after fillna:", data['Previous Close'].head())
+
+        # Calculate Adj/Open
         data['Adj/Open'] = data['Open'] - data['Previous Close']
 
+        # Proceed with the rest of the calculations
         data['Gain_Loss'] = data['Profit-Loss'] + data['Adj/Open']
 
         conditions = [
@@ -36,6 +45,7 @@ def calculate_profit_loss(data):
         data['%Change'] = np.select(conditions, choices, default=0)
         
     return data
+
 
 
 
