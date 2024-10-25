@@ -65,10 +65,13 @@ def plot_data(data, model):
     # Prepare features for prediction
     features = prepare_features(data)
     
-    # Ensure we have enough data for predictions
     if features.shape[0] > 0:
-        data['Prediction'] = model.predict(features[['Pct_Change', 'MA_10', 'MA_20', 'Volatility']])
-    
+        # Ensure we align the predictions with the original data
+        predictions = model.predict(features[['Pct_Change', 'MA_10', 'MA_20', 'Volatility']])
+        # Align the length of the predictions to the original data
+        data = data.loc[features.index]  # Ensure the indices match
+        data['Prediction'] = predictions
+        
         fig = go.Figure()
         
         # Price trace
@@ -102,19 +105,22 @@ if st.button('Analyze'):
             st.error("No data found for this ticker.")
         else:
             features = prepare_features(data)
-            model, report = train_model(features)
-            st.write("### Model Classification Report")
-            st.text(report)
+            if features.shape[0] == 0:
+                st.error("Not enough data to prepare features.")
+            else:
+                model, report = train_model(features)
+                st.write("### Model Classification Report")
+                st.text(report)
 
-            # Magic findings
-            magic_events = magic_findings(data)
-            st.write("### Magic Stock Findings")
-            for event, details in magic_events.items():
-                if not details.empty:
-                    st.write(f"Significant Events - {event.replace('_', ' ').capitalize()}:")
-                    st.table(details[['Open', 'High', 'Low', 'Close', 'Volume']])
+                # Magic findings
+                magic_events = magic_findings(data)
+                st.write("### Magic Stock Findings")
+                for event, details in magic_events.items():
+                    if not details.empty:
+                        st.write(f"Significant Events - {event.replace('_', ' ').capitalize()}:")
+                        st.table(details[['Open', 'High', 'Low', 'Close', 'Volume']])
 
-            # Plot the data
-            plot_data(data, model)
+                # Plot the data
+                plot_data(data, model)
 
 # Note: Make sure to run this code in a suitable Python environment with the required libraries.
