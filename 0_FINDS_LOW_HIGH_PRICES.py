@@ -1,111 +1,87 @@
 import streamlit as st
 import pandas as pd
-import yfinance as yf
 import numpy as np
-import plotly.graph_objects as go
+import yfinance as yf
+import matplotlib.pyplot as plt
 
-# Helper Functions
-def get_stock_data(symbol, start_date, end_date):
-    data = yf.download(symbol, start=start_date, end=end_date)
-    data.reset_index(inplace=True)
-    return data
+# Fetch historical stock data
+def fetch_data(ticker, start, end):
+    data = yf.download(ticker, start=start, end=end)
+    return data['Close']
 
-def calculate_profit_loss(data):
-    if 'Open' in data.columns and 'Adj Close' in data.columns:
-        data['Profit-Loss'] = data['Adj Close'] - data['Open']
-        data['Previous Close'] = data['Adj Close'].shift(1)
-        data['Adj/Open'] = data['Open'] - data['Previous Close']
-        data['Gain_Loss'] = data['Profit-Loss'] + data['Adj/Open'].fillna(0)
+# Detect sideways pattern
+def detect_sideways_pattern(prices, threshold=0.02):
+    pct_change = prices.pct_change()
+    sideways = np.abs(pct_change) < threshold
+    return sideways
 
-        conditions = [
-            (data['Adj/Open'].isna()),
-            (data['Adj/Open'] > 0),
-            (data['Adj/Open'] < 0)
-        ]
-        choices = [
-            (data['Gain_Loss'] / data['Open'] * 100).fillna(0),
-            (data['Gain_Loss'] / (data['Open'] - data['Adj/Open'])) * 100,
-            (data['Gain_Loss'] / (data['Open'] + data['Adj/Open'])) * 100
-        ]
-        data['%Change'] = np.select(conditions, choices, default=0)
-    return data
+# Calculate moving averages
+def calculate_moving_averages(prices, short_window=20, long_window=50):
+    short_mavg = prices.rolling(window=short_window).mean()
+    long_mavg = prices.rolling(window=long_window).mean()
+    return short_mavg, long_mavg
 
-def add_technical_indicators(data):
-    # Moving Averages
-    data['SMA_20'] = data['Adj Close'].rolling(window=20).mean()
-    data['SMA_50'] = data['Adj Close'].rolling(window=50).mean()
+# Calculate Bollinger Bands
+def calculate_bollinger_bands(prices, window=20, num_std=2):
+    rolling_mean = prices.rolling(window=window).mean()
+    rolling_std = prices.rolling(window=window).std()
+    upper_band = rolling_mean + (rolling_std * num_std)
+    lower_band = rolling_mean - (rolling_std * num_std)
+    return rolling_mean, upper_band, lower_band
+
+# Plotting function
+def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band):
+    plt.figure(figsize=(14, 8))
     
-    # Relative Strength Index (RSI)
-    delta = data['Adj Close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
-    rs = gain / loss
-    data['RSI'] = 100 - (100 / (1 + rs))
-    
-    # Bollinger Bands
-    data['Upper Band'] = data['SMA_20'] + (data['Adj Close'].rolling(window=20).std() * 2)
-    data['Lower Band'] = data['SMA_20'] - (data['Adj Close'].rolling(window=20).std() * 2)
+    plt.subplot(2, 1, 1)
+    plt.plot(prices.index, prices, label='Price', color='blue')
+    plt.scatter(prices.index[sideways], prices[sideways], color='orange', label='Sideways Pattern', s=10)
+    plt.plot(short_mavg.index, short_mavg, label='Short MA', color='green')
+    plt.plot(long_mavg.index, long_mavg, label='Long MA', color='red')
+    plt.title('Stock Price with Sideways Pattern and Moving Averages')
+    plt.xlabel('Date')
+    plt.ylabel('Price')
+    plt.legend()
+    plt.grid()
 
-    return data
+    plt.subplot(2, 1, 2)
+    plt.plot(prices.index, prices, label='Price', color='blue')
+    plt.plot(rolling_mean.index, rolling_mean, label='Rolling Mean', color='orange')
+    plt.fill_between(upper_band.index, upper_band, lower_band, color='lightgray', alpha=0.5, label='Bollinger Bands')
+    plt.title('Bollinger Bands')
+    plt.xlabel('Date')
+    plt.ylabel('Price')
+    plt.legend()
+    plt.grid()
 
-def format_data(data):
-    float_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Profit-Loss', 'Gain_Loss', 'Adj/Open', '%Change', 'SMA_20', 'SMA_50', 'RSI', 'Upper Band', 'Lower Band']
-    data[float_columns] = data[float_columns].round(2)
-    return data
+    st.pyplot(plt)
 
-def create_candlestick_chart(data, symbol):
-    fig = go.Figure(data=[go.Candlestick(
-        x=data['Date'],
-        open=data['Open'],
-        high=data['High'],
-        low=data['Low'],
-        close=data['Close'],
-        name='Candlestick'
-    )])
+# Streamlit UI
+st.title('Market Analysis with Advanced Pattern Detection')
 
-    # Add Moving Averages
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['SMA_20'], mode='lines', name='SMA 20', line=dict(color='orange')))
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['SMA_50'], mode='lines', name='SMA 50', line=dict(color='blue')))
-    
-    # Add Bollinger Bands
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['Upper Band'], mode='lines', name='Upper Band', line=dict(color='red', dash='dash')))
-    fig.add_trace(go.Scatter(x=data['Date'], y=data['Lower Band'], mode='lines', name='Lower Band', line=dict(color='green', dash='dash')))
+ticker = st.text_input('Enter stock ticker (e.g., AAPL):', 'AAPL')
+start_date = st.date_input('Start date', pd.to_datetime('2020-01-01'))
+end_date = st.date_input('End date', pd.to_datetime('today'))
 
-    fig.update_layout(title=f'{symbol} Stock Price with Indicators', xaxis_title='Date', yaxis_title='Price', xaxis_rangeslider_visible=False)
-    
-    return fig
+# Moving average parameters
+short_window = st.slider('Short Moving Average Window', min_value=5, max_value=100, value=20)
+long_window = st.slider('Long Moving Average Window', min_value=5, max_value=100, value=50)
 
-def main():
-    st.title('Stock Data Analysis with Technical Indicators')
+# Bollinger Bands parameters
+bollinger_window = st.slider('Bollinger Bands Window', min_value=5, max_value=100, value=20)
+num_std = st.slider('Bollinger Bands Std Dev', min_value=1, max_value=5, value=2)
 
-    # Sidebar for Inputs
-    with st.sidebar:
-        symbols_input = st.text_input('Enter stock symbols (comma-separated)', 'GOOGL,MSFT')
-        symbols = [symbol.strip() for symbol in symbols_input.split(',')]
-        start_date = st.date_input('Start Date', value=pd.to_datetime('2024-01-01'))
-        end_date = st.date_input('End Date', value=pd.to_datetime('today'))
+if st.button('Analyze'):
+    with st.spinner('Fetching data...'):
+        prices = fetch_data(ticker, start_date, end_date)
         
-        if st.button('Fetch Data'):
-            st.session_state.stock_data = {}
-            for symbol in symbols:
-                data = get_stock_data(symbol, start_date, end_date)
-                if not data.empty:
-                    data = calculate_profit_loss(data)
-                    data = add_technical_indicators(data)
-                    st.session_state.stock_data[symbol] = data
-                    st.write(f"Data fetched for {symbol}")
-                else:
-                    st.warning(f"No data found for {symbol}")
-
-    # Main area for Data Display and Charts
-    if 'stock_data' in st.session_state:
-        for symbol, data in st.session_state.stock_data.items():
-            formatted_data = format_data(data)
-            st.write(f'{symbol} Stock Data')
-            st.dataframe(formatted_data, use_container_width=True)
-
-            fig = create_candlestick_chart(data, symbol)
-            st.plotly_chart(fig, use_container_width=True)
-
-if __name__ == "__main__":
-    main()
+        if prices.empty:
+            st.error("No data found for this ticker.")
+        else:
+            sideways = detect_sideways_pattern(prices)
+            short_mavg, long_mavg = calculate_moving_averages(prices, short_window, long_window)
+            rolling_mean, upper_band, lower_band = calculate_bollinger_bands(prices, bollinger_window, num_std)
+            
+            st.subheader(f'{ticker} Sideways Pattern and Moving Averages Analysis')
+            plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band)
+            st.write(f'Total Days in Sideways Pattern: {sideways.sum()}')
