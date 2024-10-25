@@ -33,7 +33,7 @@ def calculate_bollinger_bands(prices, window=20, num_std=2):
     lower_band = rolling_mean - (rolling_std * num_std)
     return rolling_mean, upper_band, lower_band
 
-# Magic stock and price findings
+# Magic stock findings
 def magic_findings(prices):
     max_price = prices.max()
     min_price = prices.min()
