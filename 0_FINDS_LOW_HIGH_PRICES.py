@@ -1,42 +1,111 @@
 import streamlit as st
-import yfinance as yf
 import pandas as pd
+import yfinance as yf
+import numpy as np
+import plotly.graph_objects as go
 
-# Function to fetch stock data
-def fetch_stock_data(symbols, start_date, end_date):
-    data = {}
-    for symbol in symbols:
-        try:
-            stock = yf.Ticker(symbol)
-            # Fetch historical data within the specified date range
-            data[symbol] = stock.history(start=start_date, end=end_date)
-        except Exception as e:
-            st.error(f"Error fetching data for {symbol}: {e}")
+# Helper Functions
+def get_stock_data(symbol, start_date, end_date):
+    data = yf.download(symbol, start=start_date, end=end_date)
+    data.reset_index(inplace=True)
     return data
 
-# Streamlit app
-st.title("Stock Data Fetcher")
+def calculate_profit_loss(data):
+    if 'Open' in data.columns and 'Adj Close' in data.columns:
+        data['Profit-Loss'] = data['Adj Close'] - data['Open']
+        data['Previous Close'] = data['Adj Close'].shift(1)
+        data['Adj/Open'] = data['Open'] - data['Previous Close']
+        data['Gain_Loss'] = data['Profit-Loss'] + data['Adj/Open'].fillna(0)
 
-# Input for stock symbols
-symbols_input = st.text_input("Enter stock symbols separated by commas (e.g., AAPL, MSFT, GOOG):")
-symbols = [symbol.strip() for symbol in symbols_input.split(",") if symbol.strip()]
+        conditions = [
+            (data['Adj/Open'].isna()),
+            (data['Adj/Open'] > 0),
+            (data['Adj/Open'] < 0)
+        ]
+        choices = [
+            (data['Gain_Loss'] / data['Open'] * 100).fillna(0),
+            (data['Gain_Loss'] / (data['Open'] - data['Adj/Open'])) * 100,
+            (data['Gain_Loss'] / (data['Open'] + data['Adj/Open'])) * 100
+        ]
+        data['%Change'] = np.select(conditions, choices, default=0)
+    return data
 
-# Date inputs
-start_date = st.date_input("Select start date:")
-end_date = st.date_input("Select end date:")
+def add_technical_indicators(data):
+    # Moving Averages
+    data['SMA_20'] = data['Adj Close'].rolling(window=20).mean()
+    data['SMA_50'] = data['Adj Close'].rolling(window=50).mean()
+    
+    # Relative Strength Index (RSI)
+    delta = data['Adj Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    data['RSI'] = 100 - (100 / (1 + rs))
+    
+    # Bollinger Bands
+    data['Upper Band'] = data['SMA_20'] + (data['Adj Close'].rolling(window=20).std() * 2)
+    data['Lower Band'] = data['SMA_20'] - (data['Adj Close'].rolling(window=20).std() * 2)
 
-# Button to fetch data
-if st.button("Fetch Stock Data"):
-    if symbols and start_date and end_date:
-        stock_data = fetch_stock_data(symbols, start_date, end_date)
+    return data
+
+def format_data(data):
+    float_columns = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Profit-Loss', 'Gain_Loss', 'Adj/Open', '%Change', 'SMA_20', 'SMA_50', 'RSI', 'Upper Band', 'Lower Band']
+    data[float_columns] = data[float_columns].round(2)
+    return data
+
+def create_candlestick_chart(data, symbol):
+    fig = go.Figure(data=[go.Candlestick(
+        x=data['Date'],
+        open=data['Open'],
+        high=data['High'],
+        low=data['Low'],
+        close=data['Close'],
+        name='Candlestick'
+    )])
+
+    # Add Moving Averages
+    fig.add_trace(go.Scatter(x=data['Date'], y=data['SMA_20'], mode='lines', name='SMA 20', line=dict(color='orange')))
+    fig.add_trace(go.Scatter(x=data['Date'], y=data['SMA_50'], mode='lines', name='SMA 50', line=dict(color='blue')))
+    
+    # Add Bollinger Bands
+    fig.add_trace(go.Scatter(x=data['Date'], y=data['Upper Band'], mode='lines', name='Upper Band', line=dict(color='red', dash='dash')))
+    fig.add_trace(go.Scatter(x=data['Date'], y=data['Lower Band'], mode='lines', name='Lower Band', line=dict(color='green', dash='dash')))
+
+    fig.update_layout(title=f'{symbol} Stock Price with Indicators', xaxis_title='Date', yaxis_title='Price', xaxis_rangeslider_visible=False)
+    
+    return fig
+
+def main():
+    st.title('Stock Data Analysis with Technical Indicators')
+
+    # Sidebar for Inputs
+    with st.sidebar:
+        symbols_input = st.text_input('Enter stock symbols (comma-separated)', 'GOOGL,MSFT')
+        symbols = [symbol.strip() for symbol in symbols_input.split(',')]
+        start_date = st.date_input('Start Date', value=pd.to_datetime('2024-01-01'))
+        end_date = st.date_input('End Date', value=pd.to_datetime('today'))
         
-        # Display data for each stock
-        for symbol, data in stock_data.items():
-            st.subheader(f"Data for {symbol} from {start_date} to {end_date}")
-            if not data.empty:
-                st.dataframe(data)
-            else:
-                st.warning(f"No data available for {symbol} in the specified date range.")
-    else:
-        st.warning("Please enter at least one stock symbol and select the date range.")
+        if st.button('Fetch Data'):
+            st.session_state.stock_data = {}
+            for symbol in symbols:
+                data = get_stock_data(symbol, start_date, end_date)
+                if not data.empty:
+                    data = calculate_profit_loss(data)
+                    data = add_technical_indicators(data)
+                    st.session_state.stock_data[symbol] = data
+                    st.write(f"Data fetched for {symbol}")
+                else:
+                    st.warning(f"No data found for {symbol}")
 
+    # Main area for Data Display and Charts
+    if 'stock_data' in st.session_state:
+        for symbol, data in st.session_state.stock_data.items():
+            formatted_data = format_data(data)
+            st.write(f'{symbol} Stock Data')
+            st.dataframe(formatted_data, use_container_width=True)
+
+            fig = create_candlestick_chart(data, symbol)
+            st.plotly_chart(fig, use_container_width=True)
+
+if __name__ == "__main__":
+    main()
