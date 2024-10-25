@@ -16,27 +16,48 @@ def fetch_data(ticker, start, end):
         st.error(f"Error fetching data for {ticker}: {e}")
         return pd.DataFrame()
 
-# Detect sideways pattern
-def detect_sideways_pattern(prices, threshold=0.02):
-    pct_change = prices.pct_change()
-    sideways = np.abs(pct_change) < threshold
-    return sideways.astype(int)  # Return 1 for sideways, 0 otherwise
+# Calculate additional technical indicators
+def calculate_technical_indicators(data):
+    data['MA_10'] = data['Close'].rolling(window=10).mean()
+    data['MA_50'] = data['Close'].rolling(window=50).mean()
+    data['RSI'] = compute_rsi(data['Close'])
+    data['MACD'], data['MACD_Signal'] = compute_macd(data['Close'])
+    return data
+
+def compute_rsi(series, period=14):
+    delta = series.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi
+
+def compute_macd(series, short_window=12, long_window=26, signal_window=9):
+    short_ema = series.ewm(span=short_window, adjust=False).mean()
+    long_ema = series.ewm(span=long_window, adjust=False).mean()
+    macd = short_ema - long_ema
+    macd_signal = macd.ewm(span=signal_window, adjust=False).mean()
+    return macd, macd_signal
 
 # Prepare features for machine learning
 def prepare_features(data):
     features = pd.DataFrame()
     features['Close'] = data['Close']
     features['Pct_Change'] = features['Close'].pct_change()
-    features['MA_10'] = features['Close'].rolling(window=10).mean()
-    features['MA_20'] = features['Close'].rolling(window=20).mean()
     features['Volatility'] = features['Close'].rolling(window=5).std()
     features['Sideways'] = detect_sideways_pattern(data['Close'])
     features.dropna(inplace=True)
     return features
 
+# Detect sideways pattern
+def detect_sideways_pattern(prices, threshold=0.02):
+    pct_change = prices.pct_change()
+    sideways = np.abs(pct_change) < threshold
+    return sideways.astype(int)  # Return 1 for sideways, 0 otherwise
+
 # Train machine learning model
 def train_model(features):
-    X = features[['Pct_Change', 'MA_10', 'MA_20', 'Volatility']]
+    X = features[['Pct_Change', 'Volatility']]
     y = features['Sideways']
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
@@ -60,16 +81,37 @@ def magic_findings(data):
     }
     return significant_events
 
+# Generate advisory based on predictions and indicators
+def generate_advisory(data, model):
+    latest_data = data.iloc[-1]
+    prediction = model.predict([[latest_data['Pct_Change'], latest_data['Volatility']]])[0]
+
+    # Basic advisory logic
+    if prediction == 1:
+        advisory = "BUY: The stock shows potential for a sideways trend."
+    else:
+        advisory = "HOLD: No significant movements expected."
+
+    # Incorporate technical indicators
+    if latest_data['RSI'] < 30:
+        advisory += " Consider buying; RSI indicates oversold conditions."
+    elif latest_data['RSI'] > 70:
+        advisory += " Consider selling; RSI indicates overbought conditions."
+    
+    if latest_data['MACD'] > latest_data['MACD_Signal']:
+        advisory += " MACD indicates upward momentum."
+    elif latest_data['MACD'] < latest_data['MACD_Signal']:
+        advisory += " MACD indicates downward momentum."
+    
+    return advisory
+
 # Plotting function
 def plot_data(data, model):
-    # Prepare features for prediction
     features = prepare_features(data)
     
     if features.shape[0] > 0:
-        # Ensure we align the predictions with the original data
-        predictions = model.predict(features[['Pct_Change', 'MA_10', 'MA_20', 'Volatility']])
-        # Align the length of the predictions to the original data
-        data = data.loc[features.index]  # Ensure the indices match
+        predictions = model.predict(features[['Pct_Change', 'Volatility']])
+        data = data.loc[features.index]  # Align the indices
         data['Prediction'] = predictions
         
         fig = go.Figure()
@@ -91,7 +133,7 @@ def plot_data(data, model):
         st.error("Not enough data to make predictions.")
 
 # Streamlit UI
-st.title('Market Analysis with Machine Learning for Sideways Patterns')
+st.title('Market Analysis with Machine Learning and Technical Indicators')
 
 ticker = st.text_input('Enter stock ticker (e.g., AAPL):', 'AAPL')
 start_date = st.date_input('Start date', pd.to_datetime('2020-01-01'))
@@ -104,6 +146,7 @@ if st.button('Analyze'):
         if data.empty:
             st.error("No data found for this ticker.")
         else:
+            data = calculate_technical_indicators(data)  # Add technical indicators
             features = prepare_features(data)
             if features.shape[0] == 0:
                 st.error("Not enough data to prepare features.")
@@ -120,7 +163,12 @@ if st.button('Analyze'):
                         st.write(f"Significant Events - {event.replace('_', ' ').capitalize()}:")
                         st.table(details[['Open', 'High', 'Low', 'Close', 'Volume']])
 
+                # Generate advisory
+                advisory = generate_advisory(data, model)
+                st.write("### Advisory")
+                st.text(advisory)
+
                 # Plot the data
                 plot_data(data, model)
 
-# Note: Make sure to run this code in a suitable Python environment with the required libraries.
+# Note: Ensure to run this code in an environment with the required libraries.
