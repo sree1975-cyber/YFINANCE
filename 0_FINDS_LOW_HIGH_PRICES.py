@@ -11,40 +11,36 @@ def get_stock_data(symbol, start_date, end_date):
     return data
 
 def calculate_profit_loss(data):
-    # Print the shapes and first few rows for debugging
-    print("Data shape:", data.shape)
-    print("Columns:", data.columns.tolist())
-    print(data[['Open', 'Adj Close']].head())  # Check the relevant columns
+    # Ensure required columns are present
+    required_columns = ['Open', 'Adj Close']
+    if not all(col in data.columns for col in required_columns):
+        raise ValueError(f"Missing required columns: {set(required_columns) - set(data.columns)}")
+    
+    data['Profit-Loss'] = data['Adj Close'] - data['Open']
+    data['Previous Close'] = data['Adj Close'].shift(1).fillna(method='bfill')
 
-    if 'Open' in data.columns and 'Adj Close' in data.columns:
-        data['Profit-Loss'] = data['Adj Close'] - data['Open']
-        data['Previous Close'] = data['Adj Close'].shift(1)
+    # Calculate Adj/Open only if Previous Close has valid values
+    if 'Previous Close' in data.columns:
+        data['Adj/Open'] = data['Open'] - data['Previous Close'].fillna(0)
 
-        # Fill NaN values for 'Previous Close'
-        data['Previous Close'] = data['Previous Close'].fillna(method='bfill')
+    # Continue with the rest of the calculations
+    data['Gain_Loss'] = data['Profit-Loss'] + data['Adj/Open']
+    
+    # Calculate %Change
+    conditions = [
+        (data['Adj/Open'].isna()),
+        (data['Adj/Open'] > 0),
+        (data['Adj/Open'] < 0)
+    ]
+    choices = [
+        (data['Gain_Loss'] / data['Open'] * 100).fillna(0),
+        (data['Gain_Loss'] / (data['Open'] - data['Adj/Open'])) * 100,
+        (data['Gain_Loss'] / (data['Open'] + data['Adj/Open'])) * 100
+    ]
+    data['%Change'] = np.select(conditions, choices, default=0)
 
-        # Debugging previous close
-        print("Previous Close after fillna:", data['Previous Close'].head())
-
-        # Calculate Adj/Open
-        data['Adj/Open'] = data['Open'] - data['Previous Close']
-
-        # Proceed with the rest of the calculations
-        data['Gain_Loss'] = data['Profit-Loss'] + data['Adj/Open']
-
-        conditions = [
-            (data['Adj/Open'].isna()),
-            (data['Adj/Open'] > 0),
-            (data['Adj/Open'] < 0)
-        ]
-        choices = [
-            (data['Gain_Loss'] / data['Open'] * 100).fillna(0),
-            (data['Gain_Loss'] / (data['Open'] - data['Adj/Open'])) * 100,
-            (data['Gain_Loss'] / (data['Open'] + data['Adj/Open'])) * 100
-        ]
-        data['%Change'] = np.select(conditions, choices, default=0)
-        
     return data
+
 
 
 
