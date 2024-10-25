@@ -35,12 +35,21 @@ def calculate_bollinger_bands(prices, window=20, num_std=2):
 
 # Magic stock findings
 def magic_findings(prices):
-    max_price = prices.max()
-    min_price = prices.min()
-    avg_price = prices.mean()
-    recent_high = prices.iloc[-10:].max()  # Recent high in the last 10 days
-    recent_low = prices.iloc[-10:].min()    # Recent low in the last 10 days
-    return max_price, min_price, avg_price, recent_high, recent_low
+    price_changes = prices.pct_change() * 100
+    significant_events = {
+        "up_10_percent": prices[(price_changes >= 10)],
+        "down_10_percent": prices[(price_changes <= -10)],
+        "up_5_percent": prices[(price_changes >= 5)],
+        "down_5_percent": prices[(price_changes <= -5)],
+    }
+    return significant_events
+
+# Calculate performance analysis for percentage movements
+def performance_analysis(prices):
+    changes = prices.pct_change() * 100
+    days_to_gain_5 = (changes[changes >= 5].index[0] - changes.index[0]).days if any(changes >= 5) else None
+    days_to_gain_10 = (changes[changes >= 10].index[0] - changes.index[0]).days if any(changes >= 10) else None
+    return days_to_gain_5, days_to_gain_10
 
 # Calculate support and resistance levels
 def support_resistance(prices):
@@ -49,7 +58,7 @@ def support_resistance(prices):
     return support, resistance
 
 # Plotting function with Plotly
-def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance):
+def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance, magic_events):
     fig = go.Figure()
     
     # Price trace
@@ -85,11 +94,21 @@ def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band,
     st.plotly_chart(fig)
 
 # Streamlit UI
-st.title('Advanced Market Analysis with Magic Price Events')
+st.title('Advanced Market Analysis with Magic Price Events and Dow Theory')
 
 ticker = st.text_input('Enter stock ticker (e.g., AAPL):', 'AAPL')
 start_date = st.date_input('Start date', pd.to_datetime('2020-01-01'))
 end_date = st.date_input('End date', pd.to_datetime('today'))
+
+# Time period selection
+time_period = st.selectbox('Select Time Period for Analysis', ['5 Days', '15 Days', '1 Month', '3 Months', '6 Months', 'YTD', '1 Year', '2 Years', '3 Years', '4 Years', '5 Years', 'Max', 'Custom'])
+
+# Custom date selection
+if time_period == 'Custom':
+    custom_start = st.date_input('Custom Start Date', pd.to_datetime('2020-01-01'))
+    custom_end = st.date_input('Custom End Date', pd.to_datetime('today'))
+else:
+    custom_start, custom_end = pd.to_datetime(start_date), pd.to_datetime(end_date)
 
 # Moving average parameters
 short_window = st.slider('Short Moving Average Window', min_value=5, max_value=100, value=20)
@@ -101,7 +120,7 @@ num_std = st.slider('Bollinger Bands Std Dev', min_value=1, max_value=5, value=2
 
 if st.button('Analyze'):
     with st.spinner('Fetching data...'):
-        prices = fetch_data(ticker, start_date, end_date)
+        prices = fetch_data(ticker, custom_start, custom_end)
         
         if prices.empty:
             st.error("No data found for this ticker.")
@@ -109,13 +128,18 @@ if st.button('Analyze'):
             sideways = detect_sideways_pattern(prices)
             short_mavg, long_mavg = calculate_moving_averages(prices, short_window, long_window)
             rolling_mean, upper_band, lower_band = calculate_bollinger_bands(prices, bollinger_window, num_std)
-            max_price, min_price, avg_price, recent_high, recent_low = magic_findings(prices)
+            magic_events = magic_findings(prices)
+            days_to_gain_5, days_to_gain_10 = performance_analysis(prices)
             support, resistance = support_resistance(prices)
 
             st.subheader(f'{ticker} Analysis')
-            plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance)
+            plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance, magic_events)
 
             st.write(f'Total Days in Sideways Pattern: {sideways.sum()}')
-            st.write(f'Magic Stock Findings: Max Price: {max_price:.2f}, Min Price: {min_price:.2f}, Average Price: {avg_price:.2f}')
-            st.write(f'Recent High: {recent_high:.2f}, Recent Low: {recent_low:.2f}')
+            st.write(f'Magic Stock Findings:')
+            st.write(f'Upward Events (≥ 10%): {magic_events["up_10_percent"]}')
+            st.write(f'Downward Events (≤ -10%): {magic_events["down_10_percent"]}')
+            st.write(f'Upward Events (≥ 5%): {magic_events["up_5_percent"]}')
+            st.write(f'Downward Events (≤ -5%): {magic_events["down_5_percent"]}')
+            st.write(f'Days to Gain ≥ 5%: {days_to_gain_5}, Days to Gain ≥ 10%: {days_to_gain_10}')
             st.write(f'Support Level: {support:.2f}, Resistance Level: {resistance:.2f}')
