@@ -20,7 +20,7 @@ def fetch_data(ticker, start, end):
 def detect_sideways_pattern(prices, threshold=0.02):
     pct_change = prices.pct_change()
     sideways = np.abs(pct_change) < threshold
-    return sideways
+    return sideways.astype(int)  # Return 1 for sideways, 0 otherwise
 
 # Prepare features for machine learning
 def prepare_features(data):
@@ -62,22 +62,30 @@ def magic_findings(data):
 
 # Plotting function
 def plot_data(data, model):
-    fig = go.Figure()
+    # Prepare features for prediction
+    features = prepare_features(data)
     
-    # Price trace
-    fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Price', line=dict(color='blue')))
+    # Ensure we have enough data for predictions
+    if features.shape[0] > 0:
+        data['Prediction'] = model.predict(features[['Pct_Change', 'MA_10', 'MA_20', 'Volatility']])
     
-    # Predictions trace
-    data['Prediction'] = model.predict(prepare_features(data[['Close']]))
-    fig.add_trace(go.Scatter(x=data.index, y=data['Prediction'] * 100, mode='lines', name='Predicted Sideways Pattern', line=dict(color='orange', dash='dash')))
-    
-    # Update layout
-    fig.update_layout(title='Stock Price with Machine Learning Predictions',
-                      xaxis_title='Date',
-                      yaxis_title='Price',
-                      hovermode='x unified')
-    
-    st.plotly_chart(fig)
+        fig = go.Figure()
+        
+        # Price trace
+        fig.add_trace(go.Scatter(x=data.index, y=data['Close'], mode='lines', name='Price', line=dict(color='blue')))
+        
+        # Predictions trace
+        fig.add_trace(go.Scatter(x=data.index, y=data['Prediction'] * 100, mode='lines', name='Predicted Sideways Pattern', line=dict(color='orange', dash='dash')))
+        
+        # Update layout
+        fig.update_layout(title='Stock Price with Machine Learning Predictions',
+                          xaxis_title='Date',
+                          yaxis_title='Price',
+                          hovermode='x unified')
+        
+        st.plotly_chart(fig)
+    else:
+        st.error("Not enough data to make predictions.")
 
 # Streamlit UI
 st.title('Market Analysis with Machine Learning for Sideways Patterns')
