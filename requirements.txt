@@ -1,8 +1,8 @@
-streamlit==1.39.0
+streamlit<=1.39.0
 pandas<=2.2.3
-yfinance==0.2.44
-numpy==2.1.2
-plotly==5.24.1
+yfinance<=0.2.44
+numpy<=2.1.2
+plotly<=5.24.1
 
 
 
