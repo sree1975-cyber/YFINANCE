@@ -35,6 +35,16 @@ def compute_rsi(series, period=14):
 
 # Function to plot data
 def plot_data(data, symbol):
+    if data.empty:
+        st.error("No data available for the specified date range.")
+        return
+
+    # Ensure necessary columns are present
+    required_columns = ['Date', 'Open', 'High', 'Low', 'Close']
+    if not all(col in data.columns for col in required_columns):
+        st.error("Data is missing required columns.")
+        return
+
     fig = go.Figure()
 
     # Add candlestick
@@ -88,9 +98,11 @@ def main():
     if st.button('Fetch Data'):
         for symbol in symbols:
             data = get_stock_data(symbol, start_date, end_date)
-            data = calculate_technical_indicators(data)
-            fig = plot_data(data, symbol)
-            st.plotly_chart(fig)
+            if not data.empty:
+                data = calculate_technical_indicators(data)
+                fig = plot_data(data, symbol)
+                if fig:
+                    st.plotly_chart(fig)
 
 if __name__ == "__main__":
     main()
