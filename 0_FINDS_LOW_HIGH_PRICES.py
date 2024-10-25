@@ -15,8 +15,11 @@ def calculate_profit_loss(data):
         data['Profit-Loss'] = data['Adj Close'] - data['Open']
         data['Previous Close'] = data['Adj Close'].shift(1)
         
-        # Ensure that we handle the calculation correctly
-        data['Adj/Open'] = data['Open'] - data['Previous Close'].fillna(0)  # Fill NA with 0 to avoid issues
+        # Ensure the Previous Close is not NaN before performing the calculation
+        data['Previous Close'] = data['Previous Close'].fillna(method='bfill')  # Backfill NaN
+        
+        # Calculate Adj/Open safely
+        data['Adj/Open'] = data['Open'] - data['Previous Close']
 
         data['Gain_Loss'] = data['Profit-Loss'] + data['Adj/Open']
 
@@ -31,7 +34,9 @@ def calculate_profit_loss(data):
             (data['Gain_Loss'] / (data['Open'] + data['Adj/Open'])) * 100
         ]
         data['%Change'] = np.select(conditions, choices, default=0)
+        
     return data
+
 
 
 def add_technical_indicators(data):
