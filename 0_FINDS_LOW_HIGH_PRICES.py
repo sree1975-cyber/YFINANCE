@@ -38,10 +38,18 @@ def magic_findings(prices):
     max_price = prices.max()
     min_price = prices.min()
     avg_price = prices.mean()
-    return max_price, min_price, avg_price
+    recent_high = prices.iloc[-10:].max()  # Recent high in the last 10 days
+    recent_low = prices.iloc[-10:].min()    # Recent low in the last 10 days
+    return max_price, min_price, avg_price, recent_high, recent_low
+
+# Calculate support and resistance levels
+def support_resistance(prices):
+    support = prices.min()
+    resistance = prices.max()
+    return support, resistance
 
 # Plotting function with Plotly
-def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band):
+def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance):
     fig = go.Figure()
     
     # Price trace
@@ -61,9 +69,15 @@ def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band,
                              line=dict(color='lightgray', dash='dash'), showlegend=True))
     fig.add_trace(go.Scatter(x=lower_band.index, y=lower_band, mode='lines', name='Lower Band', fill='tonexty', 
                              line=dict(color='lightgray', dash='dash'), showlegend=True))
+
+    # Support and Resistance Lines
+    fig.add_trace(go.Scatter(x=prices.index, y=[support]*len(prices), mode='lines', name='Support', 
+                             line=dict(color='purple', dash='dash')))
+    fig.add_trace(go.Scatter(x=prices.index, y=[resistance]*len(prices), mode='lines', name='Resistance', 
+                             line=dict(color='gold', dash='dash')))
     
     # Update layout
-    fig.update_layout(title='Stock Price with Moving Averages and Bollinger Bands',
+    fig.update_layout(title='Stock Price with Moving Averages, Bollinger Bands, Support, and Resistance',
                       xaxis_title='Date',
                       yaxis_title='Price',
                       hovermode='x unified')
@@ -71,7 +85,7 @@ def plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band,
     st.plotly_chart(fig)
 
 # Streamlit UI
-st.title('Advanced Market Analysis with Interactive Visualizations')
+st.title('Advanced Market Analysis with Magic Price Events')
 
 ticker = st.text_input('Enter stock ticker (e.g., AAPL):', 'AAPL')
 start_date = st.date_input('Start date', pd.to_datetime('2020-01-01'))
@@ -95,10 +109,13 @@ if st.button('Analyze'):
             sideways = detect_sideways_pattern(prices)
             short_mavg, long_mavg = calculate_moving_averages(prices, short_window, long_window)
             rolling_mean, upper_band, lower_band = calculate_bollinger_bands(prices, bollinger_window, num_std)
-            max_price, min_price, avg_price = magic_findings(prices)
+            max_price, min_price, avg_price, recent_high, recent_low = magic_findings(prices)
+            support, resistance = support_resistance(prices)
 
             st.subheader(f'{ticker} Analysis')
-            plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band)
+            plot_data(prices, sideways, short_mavg, long_mavg, rolling_mean, upper_band, lower_band, support, resistance)
 
             st.write(f'Total Days in Sideways Pattern: {sideways.sum()}')
             st.write(f'Magic Stock Findings: Max Price: {max_price:.2f}, Min Price: {min_price:.2f}, Average Price: {avg_price:.2f}')
+            st.write(f'Recent High: {recent_high:.2f}, Recent Low: {recent_low:.2f}')
+            st.write(f'Support Level: {support:.2f}, Resistance Level: {resistance:.2f}')
