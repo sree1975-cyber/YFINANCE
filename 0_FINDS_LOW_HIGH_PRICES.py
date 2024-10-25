@@ -14,8 +14,11 @@ def calculate_profit_loss(data):
     if 'Open' in data.columns and 'Adj Close' in data.columns:
         data['Profit-Loss'] = data['Adj Close'] - data['Open']
         data['Previous Close'] = data['Adj Close'].shift(1)
-        data['Adj/Open'] = data['Open'] - data['Previous Close']
-        data['Gain_Loss'] = data['Profit-Loss'] + data['Adj/Open'].fillna(0)
+        
+        # Ensure that we handle the calculation correctly
+        data['Adj/Open'] = data['Open'] - data['Previous Close'].fillna(0)  # Fill NA with 0 to avoid issues
+
+        data['Gain_Loss'] = data['Profit-Loss'] + data['Adj/Open']
 
         conditions = [
             (data['Adj/Open'].isna()),
@@ -29,6 +32,7 @@ def calculate_profit_loss(data):
         ]
         data['%Change'] = np.select(conditions, choices, default=0)
     return data
+
 
 def add_technical_indicators(data):
     # Moving Averages
