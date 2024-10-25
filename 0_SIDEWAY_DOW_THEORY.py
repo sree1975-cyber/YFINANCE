@@ -87,23 +87,39 @@ def generate_advisory(data, model):
     prediction = model.predict([[latest_data['Pct_Change'], latest_data['Volatility']]])[0]
 
     # Basic advisory logic
+    advisory = ""
     if prediction == 1:
-        advisory = "BUY: The stock shows potential for a sideways trend."
+        advisory += "BUY: The stock shows potential for a sideways trend.\n"
     else:
-        advisory = "HOLD: No significant movements expected."
+        advisory += "HOLD: No significant movements expected.\n"
 
     # Incorporate technical indicators
     if latest_data['RSI'] < 30:
-        advisory += " Consider buying; RSI indicates oversold conditions."
+        advisory += "Consider buying; RSI indicates oversold conditions.\n"
     elif latest_data['RSI'] > 70:
-        advisory += " Consider selling; RSI indicates overbought conditions."
+        advisory += "Consider selling; RSI indicates overbought conditions.\n"
     
     if latest_data['MACD'] > latest_data['MACD_Signal']:
-        advisory += " MACD indicates upward momentum."
+        advisory += "MACD indicates upward momentum.\n"
     elif latest_data['MACD'] < latest_data['MACD_Signal']:
-        advisory += " MACD indicates downward momentum."
+        advisory += "MACD indicates downward momentum.\n"
+    
+    # Dow Theory analysis
+    advisory += dow_theory_analysis(data)
     
     return advisory
+
+# Dow Theory analysis
+def dow_theory_analysis(data):
+    trends = []
+    if data['Close'].iloc[-1] > data['MA_50'].iloc[-1]:
+        trends.append("The stock is in an uptrend according to Dow Theory.")
+    elif data['Close'].iloc[-1] < data['MA_50'].iloc[-1]:
+        trends.append("The stock is in a downtrend according to Dow Theory.")
+    else:
+        trends.append("The stock is in a sideways trend according to Dow Theory.")
+    
+    return " ".join(trends)
 
 # Plotting function
 def plot_data(data, model):
